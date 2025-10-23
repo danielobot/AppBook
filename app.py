@@ -28,3 +28,4 @@ st.dataframe(partidos)
 st.info("Selecciona una combinada de los partidos recomendados y realiza tu apuesta manualmente en la casa correspondiente.")
 
 # Se recomienda agregar la conexión a una API deportiva para datos reales y actualizar cada minuto.
+

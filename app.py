@@ -9,10 +9,25 @@ st.title("Live: Doble Oportunidad Local-Empate (SOFASCORE Real Time Data)")
 
 def get_live_matches_sofa():
     try:
-        response = requests.get(SOFASCORE_LIVE_URL)
-        data = response.json()
-        events = data.get("events", [])
-        partidos = []
+      def get_live_matches_sofa():
+    response = requests.get("https://www.sofascore.com/api/v1/sport/football/events/live")
+    data = response.json()
+    events = data.get("events", [])
+    
+    # Ver la estructura RAW de los datos
+    st.write("Eventos Sofascore raw:", events)
+    
+    partidos = []
+    for ev in events:
+        try:
+            home_team = ev["homeTeam"]["name"]
+            away_team = ev["awayTeam"]["name"]
+            # Mostramos toda la info relevante de cada partido
+            st.write(f"{home_team} vs {away_team}", ev)
+        except Exception as e:
+            st.warning(f"Error leyendo partido: {e}")
+    return pd.DataFrame(partidos)
+
         for ev in events:
             home_team = ev["homeTeam"]["name"]
             away_team = ev["awayTeam"]["name"]
@@ -43,4 +58,5 @@ else:
 
 st.dataframe(partidos)
 st.info("Partidos donde el local va ganando al descanso. Recomendación: combinada doble oportunidad Local-Empate (1X).")
+
 

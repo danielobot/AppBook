@@ -2,30 +2,45 @@ import streamlit as st
 import pandas as pd
 import requests
 
-st.set_page_config(page_title="Buscador Live Partidos Doble Oportunidad")
+SOFASCORE_LIVE_URL = "https://www.sofascore.com/api/v1/sport/football/events/live"
 
-st.title("Buscador de Partidos LIVE - Doble Oportunidad Local-Empate")
+st.set_page_config(page_title="Live Football Bet Finder — Sofascore")
+st.title("Live: Doble Oportunidad Local-Empate (SOFASCORE Real Time Data)")
 
-# Función simulada para obtener partidos en vivo (deberías conectar una API real)
-def get_live_matches():
-    # Simulación: deberías reemplazar por requests a una API real como Overlyzer, 365Scores o SportRadar
-    data = [
-        {'Partido': 'Universidad de Chile vs Lanus', 'Local': 'U. de Chile', 'Marcador HT': '1-0', 'Estado': 'En juego', 'Cuota Doble 1X': 1.48},
-        {'Partido': 'Juventus vs Inter', 'Local': 'Juventus', 'Marcador HT': '2-1', 'Estado': 'En juego', 'Cuota Doble 1X': 1.34},
-        {'Partido': 'River vs Boca', 'Local': 'River', 'Marcador HT': '1-0', 'Estado': 'En juego', 'Cuota Doble 1X': 1.57},
-        {'Partido': 'Benfica vs Sporting', 'Local': 'Benfica', 'Marcador HT': '0-1', 'Estado': 'En juego', 'Cuota Doble 1X': 1.9},
-    ]
-    matches = pd.DataFrame(data)
-    # Filtrar solo donde el local va ganando al descanso
-    filtered = matches[matches['Marcador HT'].str.match(r'^[1-9]-0|^[1-9]-[1-9]')].head(3)
-    return filtered
+def get_live_matches_sofa():
+    try:
+        response = requests.get(SOFASCORE_LIVE_URL)
+        data = response.json()
+        events = data.get("events", [])
+        partidos = []
+        for ev in events:
+            home_team = ev["homeTeam"]["name"]
+            away_team = ev["awayTeam"]["name"]
+            # Datos actuales y halftime (puede cambiar según estructura Sofascore)
+            halftime_home = ev["homeScore"].get("period1", None)
+            halftime_away = ev["awayScore"].get("period1", None)
+            minuto = ev.get("time", {}).get("current", "--")
+            estado = ev.get("status", {}).get("type", "")
+            if halftime_home is not None and halftime_away is not None:
+                # Solo si es mitad de partido y local va ganando
+                if halftime_home > halftime_away:
+                    partidos.append({
+                        "Partido": f"{home_team} vs {away_team}",
+                        "Marcador HT": f"{halftime_home}-{halftime_away}",
+                        "Minuto": minuto,
+                        "Estado": estado,
+                    })
+        return pd.DataFrame(partidos).head(3)
+    except Exception as e:
+        st.warning(f"Error al obtener datos de Sofascore: {e}")
+        return pd.DataFrame(columns=["Partido", "Marcador HT", "Minuto", "Estado"])
 
-st.write("Filtrando partidos donde el local va ganando al descanso y recomendando apuesta doble 'Local-Empate' (1X):")
+# Actualización automática con simple recarga
+if st.button("Refrescar datos"):
+    partidos = get_live_matches_sofa()
+else:
+    partidos = get_live_matches_sofa()
 
-partidos = get_live_matches()
 st.dataframe(partidos)
-
-st.info("Selecciona una combinada de los partidos recomendados y realiza tu apuesta manualmente en la casa correspondiente.")
-
-# Se recomienda agregar la conexión a una API deportiva para datos reales y actualizar cada minuto.
+st.info("Partidos donde el local va ganando al descanso. Recomendación: combinada doble oportunidad Local-Empate (1X).")
 

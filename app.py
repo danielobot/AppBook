@@ -3,22 +3,17 @@ import pandas as pd
 import requests
 from functools import reduce
 
-# API Keys y URLs
-ODDS_API_KEY = "4d8a3575f4d3a137e72adcb1af3bdaa5"
-ODDS_API_URL = f"https://api.the-odds-api.com/v4/sports/soccer_brazil_campeonato/events?apiKey={ODDS_API_KEY}"
 SOFASCORE_LIVE_URL = "https://www.sofascore.com/api/v1/sport/football/events/live"
+st.set_page_config(page_title="Combinada Live Football — SOLO Sofascore")
+st.title("Combinada automática Local-Empate (1X) — Solo con datos Sofascore")
 
-st.set_page_config(page_title="Live Bets Cruzado: Sofascore + Odds API")
-st.title("Live Bets: Partidos recomendados + Cuotas Doble Oportunidad (1X) [Automático]")
-
-# Obtiene partidos en vivo desde Sofascore (local va ganando al descanso)
 def get_live_matches_sofa():
-    try:
-        response = requests.get(SOFASCORE_LIVE_URL)
-        data = response.json()
-        events = data.get("events", [])
-        partidos = []
-        for ev in events:
+    response = requests.get(SOFASCORE_LIVE_URL)
+    data = response.json()
+    events = data.get("events", [])
+    partidos = []
+    for ev in events:
+        try:
             home_team = ev["homeTeam"]["name"]
             away_team = ev["awayTeam"]["name"]
             halftime_home = ev["homeScore"].get("period1", None)
@@ -28,67 +23,48 @@ def get_live_matches_sofa():
             if halftime_home is not None and halftime_away is not None:
                 if halftime_home > halftime_away:
                     partidos.append({
-                        "home_team": home_team,
-                        "away_team": away_team,
                         "Partido": f"{home_team} vs {away_team}",
                         "Marcador HT": f"{halftime_home}-{halftime_away}",
                         "Minuto": minuto,
                         "Estado": estado,
+                        "Cuota 1": None,
+                        "Cuota X": None,
+                        "Cuota Doble Oportunidad 1X": None
                     })
-        return pd.DataFrame(partidos).head(3)
-    except Exception as e:
-        st.warning(f"Error al obtener datos de Sofascore: {e}")
-        return pd.DataFrame(columns=["Partido", "Marcador HT", "Minuto", "Estado"])
+        except Exception:
+            pass
+    return pd.DataFrame(partidos).head(3)
 
-# Obtiene cuotas 1X (double chance: home or draw) desde Odds API
-def get_odds_events():
-    response = requests.get(ODDS_API_URL)
-    events = response.json()
-    odds_data = []
-    for ev in events:
-        home_team = ev.get('home_team')
-        away_team = ev.get('away_team')
-        cuota_1X = None
-        for bookmaker in ev.get('bookmakers', []):
-            for market in bookmaker.get('markets', []):
-                if market['key'] == 'double_chance':
-                    for outcome in market.get('outcomes', []):
-                        if outcome['name'] == 'Home or Draw':
-                            cuota_1X = outcome['price']
-                            odds_data.append({
-                                "home_team": home_team,
-                                "away_team": away_team,
-                                "Partido": f"{home_team} vs {away_team}",
-                                "Cuota Local-Empate (1X)": cuota_1X,
-                                "Casa de apuestas": bookmaker['title'],
-                            })
-    return pd.DataFrame(odds_data)
+def calcular_cuota_1x(cuota_1, cuota_x):
+    try:
+        if cuota_1 and cuota_x:
+            return round(1 / (1/cuota_1 + 1/cuota_x), 2)
+        return None
+    except Exception:
+        return None
 
-if st.button("Refrescar recomendaciones"):
-    partidos_sofa = get_live_matches_sofa()
-    cuotas_odds = get_odds_events()
+if st.button("Refrescar partidos Sofascore"):
+    partidos = get_live_matches_sofa()
 else:
-    partidos_sofa = get_live_matches_sofa()
-    cuotas_odds = get_odds_events()
+    partidos = get_live_matches_sofa()
 
-# Cruce de partidos
-if not partidos_sofa.empty and not cuotas_odds.empty:
-    # Join cruzado por ambos equipos (mayúsculas/minúsculas uniformizadas)
-    partidos_sofa['home_team'] = partidos_sofa['home_team'].str.lower()
-    partidos_sofa['away_team'] = partidos_sofa['away_team'].str.lower()
-    cuotas_odds['home_team'] = cuotas_odds['home_team'].str.lower()
-    cuotas_odds['away_team'] = cuotas_odds['away_team'].str.lower()
-    combinadas = pd.merge(partidos_sofa, cuotas_odds, on=['home_team', 'away_team'])
-    st.dataframe(combinadas[["Partido_x", "Marcador HT", "Minuto", "Cuota Local-Empate (1X)", "Casa de apuestas"]])
-    
-    # Totalizador de combinada 1X (solo si hay 3 partidos y todas las cuotas disponibles)
-    cuotas = combinadas["Cuota Local-Empate (1X)"].tolist()
-    if cuotas and len(cuotas) == 3:
-        valor_combinada = reduce(lambda x, y: x*y, cuotas)
-        st.success(f"**Valor total de la combinada 1X:** {valor_combinada:.2f}")
+if not partidos.empty:
+    st.write("Ingresa la cuota 'Local gana' (1) y 'Empate' (X) para cada partido, tomadas de Sofascore o tu casa de apuestas favorita:")
+    for i, row in partidos.iterrows():
+        cuota_1 = st.number_input(f"Cuota LOCAL gana (1) — {row['Partido']}", min_value=1.01, max_value=20.0, value=1.90, step=0.01, key=f"cuota1_{i}")
+        cuota_x = st.number_input(f"Cuota EMPATE (X) — {row['Partido']}", min_value=1.01, max_value=20.0, value=3.20, step=0.01, key=f"cuotax_{i}")
+        partidos.at[i, "Cuota 1"] = cuota_1
+        partidos.at[i, "Cuota X"] = cuota_x
+        partidos.at[i, "Cuota Doble Oportunidad 1X"] = calcular_cuota_1x(cuota_1, cuota_x)
+    st.dataframe(partidos[["Partido","Marcador HT","Minuto","Cuota 1","Cuota X","Cuota Doble Oportunidad 1X"]])
+
+    cuotas_combinadas = partidos["Cuota Doble Oportunidad 1X"].tolist()
+    if all(cuotas_combinadas) and len(cuotas_combinadas) == 3:
+        valor_combinada = reduce(lambda x, y: x*y, cuotas_combinadas)
+        st.success(f"**Valor total de la combinada Local-Empate (1X): {valor_combinada:.2f}**")
     else:
-        st.info("Se requieren 3 partidos y cuotas activas para calcular la combinada.")
+        st.info("Ingresa ambas cuotas para calcular la doble oportunidad y el valor de la combinada.")
 else:
-    st.info("No hay partidos que cumplan el criterio en Sofascore o cuotas disponibles en Odds API.")
+    st.info("No hay partidos que cumplan el criterio en este momento.")
 
-st.caption("Puedes modificar los endpoints o agregar más ligas según tu preferencia. El sistema cruza partidos live (local ganando al descanso) con las cuotas reales del mercado 1X.")
+st.caption("La cuota doble oportunidad (1X) se estima usando las cuotas simples 'Local gana' y 'Empate'. Puedes copiar estos datos desde Sofascore o tu casa de apuestas favorita.")
